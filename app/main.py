@@ -29,6 +29,7 @@ import shutil
 import uuid
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
                                Response)
 
@@ -48,6 +49,9 @@ ACCEPT = OFFICE + (".pdf",) + tuple(legacy.LEGACY)
 
 app = FastAPI(title=SITE)
 os.makedirs(WORK, exist_ok=True)
+_static = os.path.join(ROOT, "app", "static")
+if os.path.isdir(_static):
+    app.mount("/static", StaticFiles(directory=_static), name="static")
 
 CSS = """<style>
 :root{color-scheme:light}
@@ -77,16 +81,81 @@ th{background:#f5f8f9;white-space:nowrap}
 </style>"""
 
 
-def head(title: str) -> str:
+KAPPSTORE_PLAIN = "https://kappstore.exbridge.jp/app.php?id=6ae90e27bf778a42"
+KAPPSTORE = KAPPSTORE_PLAIN + "&ref=kfillout"
+
+
+def esc(t) -> str:
+    return (str(t or "")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+# AEO/GEO: AIに引用されるとき、何をする道具かと「やらないこと」が一緒に伝わるようにする
+JSONLD = json.dumps({
+    "@context": "https://schema.org",
+    "@graph": [
+        {"@type": "SoftwareApplication", "name": SITE,
+         "applicationCategory": "BusinessApplication",
+         "operatingSystem": "Linux / macOS / Windows（Python 3.10以上）",
+         "url": PUBLIC_BASE + "/",
+         "description": "申請書のWord・Excel・PDFを上げると、空欄を見つけて分かるところだけを埋め、"
+                        "元の書式のまま返す道具。AIに申請書の文章は作らせない。",
+         "featureList": ["様式を変えない（PDFに変換しない・旧形式は元の形式へ戻す）",
+                         "AIに文章を作らせない（日付・保存した会社情報・利用者の入力だけ）",
+                         "判定もローカルLLM。ファイルは外部のAIサービスへ送らない",
+                         "記入可能PDF・平らなPDFに対応。画像PDFは埋めずに理由を返す"],
+         "offers": {"@type": "Offer", "price": "110000", "priceCurrency": "JPY",
+                    "url": KAPPSTORE_PLAIN,
+                    "description": "買い切り版（ソースコード同梱・MIT・MCP同梱）"},
+         "publisher": {"@type": "Organization", "name": "株式会社エクスブリッジ",
+                       "url": "https://exbridge.jp/"}},
+        {"@type": "FAQPage", "mainEntity": [
+            {"@type": "Question", "name": "AIが申請書の文章を作るのですか？",
+             "acceptedAnswer": {"@type": "Answer",
+                                "text": "作りません。入る文字は「今日の日付」「保存した会社情報」"
+                                        "「あなたが書いた値」の3つだけです。AIがするのは"
+                                        "「この空欄はどの項目か」を見分けることだけで、"
+                                        "当てはまらない欄は空のまま残します。"}},
+            {"@type": "Question", "name": "様式（レイアウト）は変わりますか？",
+             "acceptedAnswer": {"@type": "Answer",
+                                "text": "変わりません。.docx / .xlsx は文字だけを差し替え、"
+                                        "旧形式（.doc / .xls）は元の形式へ戻して返します。"
+                                        "PDFへの変換もしません。"}},
+            {"@type": "Question", "name": "画像のPDFでも使えますか？",
+             "acceptedAnswer": {"@type": "Answer",
+                                "text": "使えません。文字が1文字も入っていないので空欄の位置を"
+                                        "機械で見つけられず、当て推量になります。"
+                                        "その場合は「画像なので埋められません」と返します。"}},
+            {"@type": "Question", "name": "ファイルや会社情報は外部へ送られますか？",
+             "acceptedAnswer": {"@type": "Answer",
+                                "text": "送りません。空欄の項目名を見分けるLLMもローカル（Ollama）で動きます。"
+                                        "外部のAIサービスは使いません。"}}]}]}, ensure_ascii=False)
+
+GA = ('<script async src="https://www.googletagmanager.com/gtag/js?id=G-BP0650KDFR"></script>'
+      '<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}'
+      "gtag('js',new Date());gtag('config','G-BP0650KDFR');</script>")
+DESC = ("申請書のWord・Excel・PDFを上げると、空欄を見つけて分かるところだけを埋め、元の書式のまま返します。"
+        "旧形式(.doc/.xls)は元の形式へ戻すので指定様式のまま提出できます。AIに文章は作らせません。")
+
+
+def head(title: str, desc: str = DESC, path: str = "/") -> str:
+    url = PUBLIC_BASE + path
+    full = f"{title} | {SITE}"
     return (f'<!doctype html><html lang="ja"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f"<title>{title} | {SITE}</title>"
-            f'<meta name="description" content="申請書のWord・Excelを上げると、空欄を見つけて分かるところだけを埋め、'
-            f'元の書式のまま返します。AIに文章は作らせません。">'
-            f'<link rel="canonical" href="{PUBLIC_BASE}/">' + CSS + "</head><body><div class=\"wrap\">")
+            f"<title>{full}</title>"
+            f'<meta name="description" content="{esc(desc)}">'
+            f'<link rel="canonical" href="{url}">'
+            f'<meta property="og:type" content="website">'
+            f'<meta property="og:site_name" content="{SITE}">'
+            f'<meta property="og:title" content="{esc(full)}">'
+            f'<meta property="og:description" content="{esc(desc)}">'
+            f'<meta property="og:url" content="{url}">'
+            f'<meta property="og:image" content="{PUBLIC_BASE}/static/ogp.png">'
+            f'<meta property="og:locale" content="ja_JP">'
+            f'<meta name="twitter:card" content="summary_large_image">'
+            f'<script type="application/ld+json">{JSONLD}</script>' + GA + CSS
+            + "</head><body><div class=\"wrap\">")
 
-
-KAPPSTORE = "https://kappstore.exbridge.jp/app.php?id=6ae90e27bf778a42&ref=kfillout"
 
 FOOT = ('<p class="src" style="margin-top:30px">'
         '<a href="./">最初から</a> ・ <a href="./profile">よく使う情報</a> ・ '
@@ -94,10 +163,6 @@ FOOT = ('<p class="src" style="margin-top:30px">'
         f'<a href="{KAPPSTORE}" target="_blank" rel="noopener"><b>買い切り版（ソース同梱・MCP同梱）</b></a><br>'
         '© 株式会社エクスブリッジ　ファイルはこのサーバーの中だけで処理し、外部のAIサービスへは送りません。</p>'
         "</div></body></html>")
-
-
-def esc(t) -> str:
-    return (str(t or "")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 @app.get("/healthz")
@@ -112,7 +177,7 @@ def index():
     if not p:
         warn = ('<div class="note">まだ<b>よく使う情報</b>が空です。会社名・所在地・代表者を入れておくと、'
                 'どの様式が来ても同じ値が入ります。<a href="./profile">いま入れる</a></div>')
-    return HTMLResponse(head("申請書を上げる") + f"""
+    return HTMLResponse(head("申請書を上げる", path="/") + f"""
 <h1>{SITE}</h1>
 <p class="lead">申請書の <b>Word・Excel・PDF</b>（旧形式の .doc / .xls も）を上げると、空欄を見つけて<b>分かるところだけ</b>を埋め、
 <b>元の書式のまま</b>お返しします。分からない欄は勝手に書かずに残します。</p>
@@ -145,7 +210,9 @@ def profile_get(saved: str = ""):
         f'<input type="text" id="{k}" name="{k}" value="{esc(cur.get(k,""))}" placeholder="{esc(ex)}"></div>'
         for k, l, ex in profile.FIELDS)
     msg = '<div class="note">保存しました。</div>' if saved else ""
-    return HTMLResponse(head("よく使う情報") + f"""
+    return HTMLResponse(head("よく使う情報",
+                             "会社名・所在地・代表者など、申請書のたびに書き写している情報を一度だけ登録します。以後どの様式が来ても同じ値が入ります。この内容はサーバーの中だけに保存し、外部へ送りません。",
+                             path="/profile") + f"""
 <h1><a href="./" style="text-decoration:none;color:inherit">よく使う情報</a></h1>
 <p class="lead">申請書のつらさの半分は、会社名・所在地・代表者を様式ごとに書き写すことです。
 一度入れておけば、どの様式が来ても同じ値が入ります。</p>{msg}
@@ -231,13 +298,13 @@ async def analyze(f: UploadFile = File(...)):
     name = os.path.basename(f.filename or "form")
     ext = os.path.splitext(name)[1].lower()
     if ext not in ACCEPT:
-        return HTMLResponse(head("使えない形式") +
+        return HTMLResponse(head("使えない形式", path="/") +
                             "<h1>この形式は読めません</h1><p class=\"lead\">対応しているのは "
                             + "・".join(ACCEPT) + " です。</p>"
                             '<p><a class="btn" href="./">戻る</a></p>' + FOOT, status_code=400)
     data = await f.read()
     if len(data) > MAX_MB * 1024 * 1024:
-        return HTMLResponse(head("大きすぎます") + f"<h1>{MAX_MB}MBまでです</h1>"
+        return HTMLResponse(head("大きすぎます", path="/") + f"<h1>{MAX_MB}MBまでです</h1>"
                             '<p><a class="btn" href="./">戻る</a></p>' + FOOT, status_code=400)
     job = uuid.uuid4().hex[:12]
     d = os.path.join(WORK, job)
@@ -250,7 +317,7 @@ async def analyze(f: UploadFile = File(...)):
     try:
         blanks, _h, ext_in, pdf_kind = _open_form(src, ext, d)
     except Exception as e:  # noqa: BLE001
-        return HTMLResponse(head("読めませんでした") + f"<h1>この様式は読めませんでした</h1>"
+        return HTMLResponse(head("読めませんでした", path="/") + f"<h1>この様式は読めませんでした</h1>"
                             f'<p class="lead">{esc(e)}</p>'
                             '<p><a class="btn" href="./">戻る</a></p>' + FOOT, status_code=400)
     json.dump({"name": name, "ext": ext, "ext_in": ext_in, "pdf_kind": pdf_kind},
@@ -275,7 +342,7 @@ async def analyze(f: UploadFile = File(...)):
                 '〇〇・＿＿・（　）のような印が無い様式かもしれません。</div>')
     else:
         body = "".join(notes) + _blanks_table(blanks, job)
-    return HTMLResponse(head("空欄を確かめる") + f"""
+    return HTMLResponse(head("空欄を確かめる", path="/") + f"""
 <h1>{esc(name)}</h1>
 <p class="lead">空欄 <b>{s['total']}</b> か所のうち <b>{s['filled']}</b> か所を埋めました
 （日付 {s['by_source']['date']}・よく使う情報 {s['by_source']['profile']}）。
@@ -320,7 +387,9 @@ async def download(request: Request):
 
 @app.get("/about", response_class=HTMLResponse)
 def about():
-    return HTMLResponse(head("この道具について") + """
+    return HTMLResponse(head("この道具について",
+                             "扱える形式（Word・Excel・PDF・旧形式）と、AIに文章を作らせない理由、名古屋市の申請様式4,024件の実測（80.8%がダウンロード様式・オンライン完結26.9%）を説明します。",
+                             path="/about") + """
 <h1>この道具について</h1>
 <h2>何をするか</h2>
 <p>申請書の <b>Word・Excel・PDF</b>（旧形式の .doc / .xls / .rtf / .odt / .ods も）を上げると、
