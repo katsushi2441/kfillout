@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Kurage 申請書オートフィル（内部の略称 kfillout）
+"""Kurage 申請書記入アシスト（内部の略称 kfillout）
 
-申請書のファイル（.docx / .xlsx）を上げると、空欄を見つけて、
+申請書のファイル（Word・Excel・PDF／旧形式の .doc / .xls も）を上げると、空欄を見つけて、
 **分かるところだけ**を埋めて、**元の書式のまま**返す。
 
 なぜ作るか（2026-09-14 実測）:
@@ -12,7 +12,9 @@
 
 海外には似たサービスがある（Instafill・pdfFiller・Filly AI 等）が、多くは PDF に変換してから
 埋めるので**様式が変わる**。日本の行政・研究機関は「この様式で」と指定するので、それでは出せない。
-ここは .docx / .xlsx の**文字だけ**を差し替えて、様式をそのまま保つ。
+ここは .docx / .xlsx の**文字だけ**を差し替え、旧形式（.doc/.xls）は LibreOffice で往復させて
+**元の形式へ戻し**、PDFは記入欄があれば欄に入れ、無ければ紙面の上に重ねる。様式をそのまま保つのが要件。
+文字が1字も入っていない画像PDFは、当て推量になるので**埋めずに理由を返す**。
 
 埋めない、という設計:
   AI に文章を作らせない。入る文字は「今日の日付」「保存したプロフィールの値」「利用者が書いた値」
@@ -36,7 +38,7 @@ from app.pdfform import apply_pdf, find_blanks_pdf
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORK = os.path.join(ROOT, "outputs", "jobs")
 PORT = int(os.environ.get("KFILLOUT_PORT", "18354"))
-SITE = "Kurage 申請書オートフィル"
+SITE = "Kurage 申請書記入アシスト"
 PUBLIC_BASE = os.environ.get("KFILLOUT_PUBLIC_BASE", "https://kurage.exbridge.jp/kfillout.php").rstrip("/")
 MAX_MB = 20
 # 受け取れる形式。旧形式(.doc/.xls/.rtf/.odt/.ods)は LibreOffice で往復させる
@@ -108,7 +110,7 @@ def index():
                 'どの様式が来ても同じ値が入ります。<a href="./profile">いま入れる</a></div>')
     return HTMLResponse(head("申請書を上げる") + f"""
 <h1>{SITE}</h1>
-<p class="lead">申請書の <b>.docx / .xlsx</b> を上げると、空欄を見つけて<b>分かるところだけ</b>を埋め、
+<p class="lead">申請書の <b>Word・Excel・PDF</b>（旧形式の .doc / .xls も）を上げると、空欄を見つけて<b>分かるところだけ</b>を埋め、
 <b>元の書式のまま</b>お返しします。分からない欄は勝手に書かずに残します。</p>
 {warn}
 <div class="card">
@@ -317,8 +319,16 @@ def about():
     return HTMLResponse(head("この道具について") + """
 <h1>この道具について</h1>
 <h2>何をするか</h2>
-<p>申請書の Word / Excel を上げると、〇〇・＿＿・（　）のような空欄を見つけて、
-分かるところだけを埋め、<b>元の書式のまま</b>返します。</p>
+<p>申請書の <b>Word・Excel・PDF</b>（旧形式の .doc / .xls / .rtf / .odt / .ods も）を上げると、
+〇〇・＿＿・（　）のような空欄を見つけて、分かるところだけを埋め、<b>元の書式のまま</b>返します。</p>
+<div class="scroll"><table>
+<tr><th>形式</th><th>どう扱うか</th></tr>
+<tr><td>Word（.docx）・Excel（.xlsx）</td><td>文字だけを差し替え</td></tr>
+<tr><td>旧形式（.doc / .xls / .rtf / .odt / .ods）</td><td>一度いまの形式に直して埋め、<b>元の形式に戻して</b>お返しします</td></tr>
+<tr><td>PDF（記入できるもの）</td><td>入力欄に値を入れます</td></tr>
+<tr><td>PDF（記入欄が無いもの）</td><td>紙面の上に文字を重ねます。位置がずれることがあります</td></tr>
+<tr><td>PDF（画像）</td><td><b>埋めません。</b>文字が入っていないので当て推量になり、事故のもとです</td></tr>
+</table></div>
 <h2>なぜ作ったか</h2>
 <p>名古屋市が配っている申請様式を数えると <b>4,024件</b>、その <b>80.8%</b> が
 Word・PDF・Excel のダウンロード様式で、オンラインで完結できるのは <b>26.9%</b> でした
@@ -342,10 +352,14 @@ AIがするのは「この空欄はどの項目か」を見分けることだけ
 def llms():
     return f"""# {SITE}
 
-> 申請書の Word / Excel を上げると、空欄を見つけて分かるところだけを埋め、元の書式のまま返す道具。
+> 申請書の Word・Excel・PDF（旧形式の .doc / .xls も）を上げると、空欄を見つけて
+> 分かるところだけを埋め、元の書式のまま返す道具。
 
 ## 特徴
-- .docx / .xlsx の文字だけを差し替えるので、**様式が変わらない**（PDFへ変換しない）
+- **様式が変わらない。** .docx / .xlsx は文字だけを差し替え、旧形式は元の形式へ戻して返す。
+  海外の同種サービスの多くはPDFへ変換するので様式が変わり、指定様式として提出できない
+- PDFは3つの型を見分ける: 記入できるPDF＝欄に入れる／記入欄が無いPDF＝紙面に重ねる／
+  **画像PDF＝埋めずに理由を返す**（当て推量で書くと申請書として事故になる）
 - AIに文章を作らせない。入る文字は「今日の日付」「保存した会社情報」「利用者の入力」だけ
 - 判定はローカルのLLM。ファイルも入力も外部のAIサービスへ送らない
 

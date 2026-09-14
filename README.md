@@ -1,4 +1,4 @@
-# Kurage 申請書オートフィル（kfillout）
+# Kurage 申請書記入アシスト（kfillout）
 
 申請書の **Word / Excel / PDF**（旧形式の .doc / .xls も）を上げると、空欄を見つけて
 **分かるところだけ**を埋め、**元の書式のまま**返す。

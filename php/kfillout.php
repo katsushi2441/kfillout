@@ -1,5 +1,5 @@
 <?php
-// Kurage 申請書オートフィル (kfillout) — kurage.exbridge.jp 上の公開入口。自宅サーバー :18354 への透過プロキシ。
+// Kurage 申請書記入アシスト (kfillout) — kurage.exbridge.jp 上の公開入口。自宅サーバー :18354 への透過プロキシ。
 // UI は相対パスなので /kfillout.php/ (末尾スラッシュ) を起点に PATH_INFO で中継する。
 // バックエンド URL は同ディレクトリの kfillout_config.php で定義（リポジトリには含めない）:
 //   <?php define('KFILLOUT_BACKEND', 'http://あなたのサーバー:18354');
@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 $res = curl_exec($ch);
 if ($res === false) { http_response_code(502); header('Content-Type: text/plain; charset=utf-8');
-    echo 'Kurage 申請書オートフィルのバックエンドに接続できません'; exit; }
+    echo 'Kurage 申請書記入アシストのバックエンドに接続できません'; exit; }
 $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 $hsize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
 $ctype = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);

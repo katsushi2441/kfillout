@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Kurage 申請書オートフィル — MCPサーバー（stdio・1ファイル）
+"""Kurage 申請書記入アシスト — MCPサーバー（stdio・1ファイル）
 
 Claude Code / Codex / Claude Desktop から、申請書のファイルのパスを渡して
 「空欄はどこか」「何が埋まるか」を調べ、埋めたファイルを書き出すための橋。
