@@ -108,6 +108,13 @@ JSONLD = json.dumps({
                     "description": "買い切り版（ソースコード同梱・MIT・MCP同梱）"},
          "publisher": {"@type": "Organization", "name": "株式会社エクスブリッジ",
                        "url": "https://exbridge.jp/"}},
+        {"@type": "VideoObject",
+         "name": "Kurage 申請書記入アシスト 30秒PV",
+         "description": "申請書のWord・Excel・PDFを上げると、空欄を見つけて分かるところだけを埋め、"
+                        "元の書式のまま返す様子。名古屋市の申請様式4,024件のうちオンライン完結は26.9%。",
+         "thumbnailUrl": "https://kurage.exbridge.jp/pv/kfillout-pv-poster.jpg",
+         "contentUrl": "https://kurage.exbridge.jp/pv/kfillout-pv-30s.mp4",
+         "uploadDate": "2026-09-14", "duration": "PT30S"},
         {"@type": "FAQPage", "mainEntity": [
             {"@type": "Question", "name": "AIが申請書の文章を作るのですか？",
              "acceptedAnswer": {"@type": "Answer",
@@ -189,6 +196,14 @@ def index():
 <p style="margin:14px 0 0"><button class="btn" type="submit">空欄を調べる</button></p>
 </form>
 </div>
+<h2>30秒でわかります</h2>
+<div class="card" style="padding:12px">
+<video controls preload="none" playsinline poster="https://kurage.exbridge.jp/pv/kfillout-pv-poster.jpg"
+       style="width:100%;height:auto;border-radius:10px;display:block">
+<source src="https://kurage.exbridge.jp/pv/kfillout-pv-30s.mp4" type="video/mp4">
+</video>
+</div>
+
 <h2>この道具がしないこと</h2>
 <div class="card">
 <p style="margin:0">AIに<b>申請書の文章を作らせません</b>。入る文字は次の3つだけです。</p>

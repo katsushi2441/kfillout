@@ -15,6 +15,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONT_B = "/usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc"
 FONT_R = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 W, H = 1200, 630
+# note の見出し画像は 1280x670 が推奨。同じ絵をそのサイズでも書き出す
+NOTE_W, NOTE_H = 1280, 670
 FOAM, PANEL, TEAL, NAVY, MUTED = "#f5fbfb", "#e7f3f2", "#0a9a8f", "#12202f", "#5b6b76"
 
 
@@ -50,6 +52,12 @@ def main():
     os.makedirs(os.path.dirname(out), exist_ok=True)
     img.save(out)
     print(out, img.size)
+    # note の見出し画像用（1280x670）。note_set_eyecatch 系はこのサイズを前提にしている
+    note = img.resize((NOTE_W, NOTE_H), Image.LANCZOS)
+    out2 = os.path.join(ROOT, "outputs", "listing", "note_eyecatch.png")
+    os.makedirs(os.path.dirname(out2), exist_ok=True)
+    note.save(out2)
+    print(out2, note.size)
 
 
 if __name__ == "__main__":
