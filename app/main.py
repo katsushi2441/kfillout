@@ -29,8 +29,9 @@ import uuid
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
-from app import fill, llm, profile
+from app import fill, legacy, llm, profile
 from app.forms import apply_docx, apply_xlsx, find_blanks_docx, find_blanks_xlsx
+from app.pdfform import apply_pdf, find_blanks_pdf
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORK = os.path.join(ROOT, "outputs", "jobs")
@@ -38,6 +39,9 @@ PORT = int(os.environ.get("KFILLOUT_PORT", "18354"))
 SITE = "Kurage 申請書オートフィル"
 PUBLIC_BASE = os.environ.get("KFILLOUT_PUBLIC_BASE", "https://kurage.exbridge.jp/kfillout.php").rstrip("/")
 MAX_MB = 20
+# 受け取れる形式。旧形式(.doc/.xls/.rtf/.odt/.ods)は LibreOffice で往復させる
+OFFICE = (".docx", ".xlsx")
+ACCEPT = OFFICE + (".pdf",) + tuple(legacy.LEGACY)
 
 app = FastAPI(title=SITE)
 os.makedirs(WORK, exist_ok=True)
@@ -109,8 +113,8 @@ def index():
 {warn}
 <div class="card">
 <form method="post" action="./analyze" enctype="multipart/form-data">
-<label>申請書のファイル（Word または Excel・{MAX_MB}MBまで）</label>
-<input type="file" name="f" accept=".docx,.xlsx" required>
+<label>申請書のファイル（Word・Excel・PDF／旧形式の .doc .xls も可・{MAX_MB}MBまで）</label>
+<input type="file" name="f" accept=".docx,.xlsx,.pdf,.doc,.xls,.rtf,.odt,.ods" required>
 <p style="margin:14px 0 0"><button class="btn" type="submit">空欄を調べる</button></p>
 </form>
 </div>
@@ -154,6 +158,39 @@ async def profile_post(request: Request):
     return HTMLResponse('<meta http-equiv="refresh" content="0;url=./profile?saved=1">')
 
 
+def _open_form(src: str, ext: str, work: str):
+    """様式を読む。旧形式は LibreOffice で .docx/.xlsx へ往復させる。
+
+    返り値 (blanks, handle, ext_in, pdf_kind)
+      ext_in … 実際に読んだ形式（旧形式のときは変換後）
+      pdf_kind … acroform / flat / image（PDF以外は "")
+    """
+    if ext in legacy.LEGACY:
+        if not legacy.available():
+            raise RuntimeError("旧形式（.doc/.xls）を扱うには LibreOffice が要ります")
+        src = legacy.convert(src, legacy.LEGACY[ext], os.path.join(work, "conv"))
+        ext = legacy.LEGACY[ext]
+    if ext == ".pdf":
+        blanks, kind = find_blanks_pdf(src)
+        return blanks, src, ext, kind
+    if ext == ".docx":
+        b, h = find_blanks_docx(src)
+        return b, h, ext, ""
+    b, h = find_blanks_xlsx(src)
+    return b, h, ext, ""
+
+
+def _save_form(handle, blanks, ext_in: str, pdf_kind: str, src: str, out: str) -> None:
+    if ext_in == ".pdf":
+        apply_pdf(src, out, blanks, pdf_kind)
+    elif ext_in == ".docx":
+        apply_docx(handle, blanks)
+        handle.save(out)
+    else:
+        apply_xlsx(handle, blanks)
+        handle.save(out)
+
+
 def _job_dir(job: str) -> str:
     d = os.path.join(WORK, job)
     if not os.path.isdir(d) or ".." in job or "/" in job:
@@ -187,10 +224,10 @@ def _blanks_table(blanks, job: str) -> str:
 async def analyze(f: UploadFile = File(...)):
     name = os.path.basename(f.filename or "form")
     ext = os.path.splitext(name)[1].lower()
-    if ext not in (".docx", ".xlsx"):
+    if ext not in ACCEPT:
         return HTMLResponse(head("使えない形式") +
-                            "<h1>この形式は読めません</h1><p class=\"lead\">いまは Word(.docx) と "
-                            "Excel(.xlsx) に対応しています。PDFと旧形式(.doc/.xls)はこれからです。</p>"
+                            "<h1>この形式は読めません</h1><p class=\"lead\">対応しているのは "
+                            + "・".join(ACCEPT) + " です。</p>"
                             '<p><a class="btn" href="./">戻る</a></p>' + FOOT, status_code=400)
     data = await f.read()
     if len(data) > MAX_MB * 1024 * 1024:
@@ -204,14 +241,34 @@ async def analyze(f: UploadFile = File(...)):
     json.dump({"name": name, "ext": ext}, open(os.path.join(d, "meta.json"), "w", encoding="utf-8"),
               ensure_ascii=False)
 
-    blanks, _ = find_blanks_docx(src) if ext == ".docx" else find_blanks_xlsx(src)
+    try:
+        blanks, _h, ext_in, pdf_kind = _open_form(src, ext, d)
+    except Exception as e:  # noqa: BLE001
+        return HTMLResponse(head("読めませんでした") + f"<h1>この様式は読めませんでした</h1>"
+                            f'<p class="lead">{esc(e)}</p>'
+                            '<p><a class="btn" href="./">戻る</a></p>' + FOOT, status_code=400)
+    json.dump({"name": name, "ext": ext, "ext_in": ext_in, "pdf_kind": pdf_kind},
+              open(os.path.join(d, "meta.json"), "w", encoding="utf-8"), ensure_ascii=False)
     blanks = fill.plan(blanks)
     s = fill.summary(blanks)
+    notes = []
+    if pdf_kind == "image":
+        notes.append('<div class="note"><b>この様式は画像のPDFです。</b>'
+                     '文字が1文字も入っていないので、どこが空欄かを機械で見つけられません。'
+                     '当て推量で書くと事故になるので埋めません。'
+                     '可能なら Word / Excel 版か、記入できるPDFをお探しください。</div>')
+    elif pdf_kind == "flat":
+        notes.append('<div class="note">記入欄を持たないPDFなので、<b>元の紙面の上に文字を重ねて</b>書きます。'
+                     '位置がずれることがあるので、出てきたファイルを必ず目で確かめてください。</div>')
+    if ext in legacy.LEGACY:
+        notes.append(f'<div class="note">{esc(ext)} は古い形式なので、'
+                     f'一度 {esc(legacy.LEGACY[ext])} に直して埋め、<b>{esc(ext)} に戻して</b>お返しします。'
+                     '往復で見た目が完全に同じになる保証はないので、目で確かめてください。</div>')
     if not blanks:
-        body = ('<div class="note">空欄が見つかりませんでした。'
-                '〇〇・＿＿・（　）のような印が無い様式か、画像として貼られている可能性があります。</div>')
+        body = "".join(notes) + ('<div class="note">空欄が見つかりませんでした。'
+                '〇〇・＿＿・（　）のような印が無い様式かもしれません。</div>')
     else:
-        body = _blanks_table(blanks, job)
+        body = "".join(notes) + _blanks_table(blanks, job)
     return HTMLResponse(head("空欄を確かめる") + f"""
 <h1>{esc(name)}</h1>
 <p class="lead">空欄 <b>{s['total']}</b> か所のうち <b>{s['filled']}</b> か所を埋めました
@@ -240,23 +297,16 @@ async def download(request: Request):
     src = os.path.join(d, "original" + ext)
     answers = {k[2:]: str(v) for k, v in form.items() if k.startswith("v:")}
 
-    if ext == ".docx":
-        blanks, doc = find_blanks_docx(src)
-        # 画面で確定した値だけを使う（ここでLLMは呼ばない。押すたびに変わるのを防ぐ）
-        # plan() が answers を取り込み、商号の位置合わせまでやる。
-        # ここで value を上書きすると位置合わせが消えるので触らない（実測で踏んだ）
-        blanks = fill.plan(blanks, answers=answers, use_llm=False)
-        apply_docx(doc, blanks)
-        out = os.path.join(d, "filled.docx")
-        doc.save(out)
-    else:
-        blanks, wb = find_blanks_xlsx(src)
-        # plan() が answers を取り込み、商号の位置合わせまでやる。
-        # ここで value を上書きすると位置合わせが消えるので触らない（実測で踏んだ）
-        blanks = fill.plan(blanks, answers=answers, use_llm=False)
-        apply_xlsx(wb, blanks)
-        out = os.path.join(d, "filled.xlsx")
-        wb.save(out)
+    blanks, handle, ext_in, pdf_kind = _open_form(src, ext, d)
+    # 画面で確定した値だけを使う（ここでLLMは呼ばない。押すたびに変わるのを防ぐ）。
+    # plan() が answers を取り込み、商号の位置合わせまでやるので、あとから value を上書きしない
+    blanks = fill.plan(blanks, answers=answers, use_llm=False)
+    read_src = handle if ext_in == ".pdf" else src
+    out = os.path.join(d, "filled" + ext_in)
+    _save_form(handle, blanks, ext_in, pdf_kind, read_src, out)
+    # 旧形式は元の形式へ戻す（指定様式のまま出せるようにするのが要件）
+    if ext in legacy.LEGACY:
+        out = legacy.convert(out, ext, os.path.join(d, "back"))
     stem = os.path.splitext(name)[0]
     return FileResponse(out, filename=f"{stem}_記入済み{ext}",
                         media_type="application/octet-stream")

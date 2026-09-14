@@ -28,11 +28,21 @@ JP_ERA_RE = re.compile(r'令和\s*[〇○]\s*年')
 WAREKI_START = 2018   # 令和元年 = 2019年
 
 
-def _today_for(line: str) -> str:
+def _today_for(raw: str) -> str:
+    """空欄の**見た目に合わせた**今日の日付を作る。
+
+    「令和○年」だけの欄に「令和8年9月14日」を入れると、後ろの「○月○日」が残って
+    「令和8年9月14日○月○日」になる（実測で踏んだ）。
+    月・日を含むかどうかを見て、同じ形のものを返す。
+    """
     d = datetime.date.today()
-    if JP_ERA_RE.search(line):
-        return f"令和{d.year - WAREKI_START}年{d.month}月{d.day}日"
-    return f"{d.year}年{d.month}月{d.day}日"
+    era = bool(re.search(r'令和|平成|昭和', raw))
+    head = f"令和{d.year - WAREKI_START}年" if era else f"{d.year}年"
+    if "日" in raw:
+        return f"{head}{d.month}月{d.day}日"
+    if "月" in raw:
+        return f"{head}{d.month}月"
+    return head
 
 
 def _company_for(line: str, raw: str, value: str):
@@ -78,8 +88,8 @@ def plan(blanks, answers: dict | None = None, use_llm: bool = True):
         if b.id in answers and answers[b.id].strip():
             b.value, b.source, b.label = answers[b.id].strip(), "user", b.label or "入力済み"
             continue
-        if re.search(r'[〇○]\s*年|[〇○]\s*月\s*[〇○]\s*日', b.raw):
-            b.value, b.source, b.label = _today_for(b.line), "date", "申請日"
+        if re.search(r'[〇○]\s*[年月日]', b.raw):
+            b.value, b.source, b.label = _today_for(b.raw), "date", "申請日"
             b.note = "今日の日付を入れています。提出日が違うときは直してください。"
             continue
         rest.append(b)

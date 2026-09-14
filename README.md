@@ -1,7 +1,10 @@
 # Kurage 申請書オートフィル（kfillout）
 
-申請書の **Word / Excel** を上げると、空欄を見つけて**分かるところだけ**を埋め、
-**元の書式のまま**返す。`:18354`
+申請書の **Word / Excel / PDF**（旧形式の .doc / .xls も）を上げると、空欄を見つけて
+**分かるところだけ**を埋め、**元の書式のまま**返す。
+
+- 公開: https://kurage.exbridge.jp/kfillout.php/
+- バックエンド `:18354`（user unit `kfillout.service`）／ 公開は heteml の `php/kfillout.php` 透過プロキシ
 
 ## なぜ作るか（2026-09-14 実測）
 
@@ -53,6 +56,14 @@ AI がするのは「この空欄はどの項目か」の見分けだけ。当�
 - **LLMを使う経路と使わない経路で結果が変わる**: ダウンロード時は `use_llm=False` で呼ぶので、
   商号の位置合わせを LLM 分岐の中でやると効かない。共通の最終処理に置く
 - **gemma4 は思考型**なので `"think": false` が要る（指定しないと応答が空になる）
+- **日付の置換範囲**: 「令和○年」だけを拾って「令和8年9月14日」を入れると、後ろに「○月○日」が残って
+  **「令和8年9月14日○月○日」**になる。空欄の見た目（年だけ／年月／年月日）に合わせて返す
+- **PDFの記入欄のフォント**: `update_page_form_field_values(..., auto_regenerate=True)` だと
+  pypdf が自前で見た目を作ろうとして、欄のフォントが日本語を持たないPDFで化ける。
+  `False` にして `NeedAppearances` を立て、**開いたビューアに描かせる**
+- **LibreOffice の同時実行**: プロファイルを排他ロックするので、仕事ごとに
+  `-env:UserInstallation` を分ける（分けないと2つ目が黙って失敗する）
+- **pypdf の真偽値**: `BooleanObject` なので `is True` では比較できない
 
 ## 構成
 
@@ -72,9 +83,37 @@ curl http://127.0.0.1:18354/healthz
 .venv/bin/python -m pytest tests/ -q
 ```
 
+## 扱える形式
+
+| 形式 | 扱い方 |
+|---|---|
+| `.docx` | 段落・表のセルの文字だけを差し替え |
+| `.xlsx` | セルの文字だけを差し替え |
+| `.doc` / `.xls` / `.rtf` / `.odt` / `.ods` | LibreOffice で `.docx`/`.xlsx` へ変換 → 埋める → **元の形式へ戻す** |
+| `.pdf`（記入可能・AcroForm） | pypdf でフィールドに値を入れる |
+| `.pdf`（平ら・文字あり） | 〇〇 の座標を探して**紙面の上に重ねて書く** |
+| `.pdf`（画像） | **埋めない。「画像なので埋められません」と返す** |
+
+PDFの型ごとの実測（2026-09-14）:
+- 名古屋市の戸籍証明交付申請書 … AcroForm のフィールド **0個**・テキスト2,840字 → 平らなPDF
+- 名古屋市 千種区の洪水ハザードマップ … 5.5MB・1ページで抽出できた文字 **1字** → 画像PDF
+
+## MCP 同梱
+
+`kfillout_mcp.py`（stdio・1ファイル）。チャットから様式を投げて埋められる。
+
+```bash
+claude mcp add kfillout -- /home/kojima/work/kfillout/.venv/bin/python \
+    /home/kojima/work/kfillout/kfillout_mcp.py
+```
+
+ツールは3つ。`kfillout_inspect`（空欄を調べる）/ `kfillout_fill`（埋めて書き出す）/
+`kfillout_profile`（よく使う情報）。instructions に
+**「申請書の文章をあなたが作ってはいけません」**を明記してある。
+
 ## これから
 
-- PDF様式（`.pdf`）と旧形式（`.doc` / `.xls`）への対応
 - チェックボックス・押印欄の扱い
 - 同じ様式を複数人ぶん一度に作る
-- MCP 同梱（チャットから様式を投げて埋める）
+- 平らなPDFで、〇〇 が無くラベルと罫線だけの欄（名古屋市の戸籍様式のような「氏 名」の右側）
+- kappstore 出品

@@ -49,3 +49,25 @@ def test_find_blanks_sample():
     assert len(blanks) == 5, raws
     assert any("年" in r for r in raws), "申請日の欄が取れていない"
     assert sum(1 for r in raws if r in ("〇〇", "○○")) == 4, raws
+
+
+def test_date_shape():
+    """空欄の見た目に合わせた日付を返す。
+
+    「令和○年」だけの欄に「令和8年9月14日」を入れると後ろの「○月○日」が残って
+    「令和8年9月14日○月○日」になる。実測で踏んだので固定する。
+    """
+    from app.forms import DATE_PATTERN
+
+    def fill_one(t):
+        m = DATE_PATTERN.search(t)
+        assert m, t
+        return t.replace(m.group(0), _today_for(m.group(0)), 1)
+
+    assert fill_one("令和○年○月○日").count("年") == 1
+    assert "○" not in fill_one("令和○年○月○日")
+    assert "○" not in fill_one("令和○年")
+    assert "○" not in fill_one("2026年○月○日")
+    assert "○" not in fill_one("令和○年○月")
+    assert fill_one("令和○年").startswith("令和")
+    assert fill_one("2026年○月○日")[:4].isdigit()
