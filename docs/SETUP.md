@@ -4,14 +4,22 @@ AIエージェント（Claude Code など）にこのフォルダごと渡せば
 
 ## 何が要るか
 
+> **共有レンタルサーバー（さくら・ロリポップ・heteml など）では動きません。**
+> 常駐プロセスを立てられず、実行時間に制限があり、外部コマンド（LibreOffice）も呼べないためです。
+> VPS・専用サーバー・社内サーバーのいずれかをご用意ください。
+
 | | 要るもの | 備考 |
 |---|---|---|
-| 必須 | Python 3.10 以上 | |
+| 必須 | VPS / 専用 / 社内サーバー | 共有レンタルは不可 |
+| 必須 | Python 3.10 以上 | 常駐プロセスを1つ動かす |
 | 必須 | ポート1つ | 既定 18354。`KFILLOUT_PORT` で変更 |
+| 推奨 | メモリ 2GB 以上 | LibreOffice を使う場合 |
 | 任意 | Ollama（ローカルLLM） | 無くても動く。**空欄の項目名を見分ける精度が落ちるだけ** |
 | 任意 | LibreOffice | 旧形式（.doc / .xls / .rtf / .odt / .ods）を扱うときだけ要る |
 
 **外部のAIサービスは使いません。** ファイルも会社情報もこのサーバーの外へ出ません。
+
+公開だけはレンタルサーバーからできます（同梱の `php/kfillout.php` を置く。中身はVPS側で動く）。
 
 ## 手順
 
@@ -27,14 +35,19 @@ python3 -m venv .venv
 
 空欄が「何を書く欄か」を見分けるのに使います。**申請書の文章は作らせません。**
 
+デモサイト（kurage.exbridge.jp/kfillout.php/）も同じ構成で、**Ollama の `gemma4:12b-it-qat`**（Google の Gemma 系12B・4bit量子化）を使っています。
+
 ```bash
 ollama pull gemma4:12b-it-qat
 ```
 
+12B を動かすにはメモリ 8GB 以上（GPUがあればより快適）が目安です。
+GPUが無い環境では `gemma4:e4b` のような小さいモデルでも動きます。
+
 別のホストで動かしているときは環境変数で差し替えます。
 
 ```bash
-export KFILLOUT_OLLAMA=http://192.168.0.10:11434
+export KFILLOUT_OLLAMA=http://ollama-host.example.local:11434
 export KFILLOUT_MODEL=gemma4:12b-it-qat
 ```
 

@@ -4,7 +4,8 @@
 **分かるところだけ**を埋め、**元の書式のまま**返す。
 
 - 公開: https://kurage.exbridge.jp/kfillout.php/
-- 買い切り版: https://kappstore.exbridge.jp/app.php?id=6ae90e27bf778a42 （税込55,000円・MIT・MCP同梱）
+- 買い切り版: https://kappstore.exbridge.jp/app.php?id=6ae90e27bf778a42 （税込110,000円・MIT・MCP同梱）
+- **共有レンタルサーバーでは動かない。** 常駐プロセス・外部コマンド（LibreOffice）・ローカルLLMが要るのでVPS以上が要る
 - バックエンド `:18354`（user unit `kfillout.service`）／ 公開は heteml の `php/kfillout.php` 透過プロキシ
 
 ## なぜ作るか（2026-09-14 実測）
