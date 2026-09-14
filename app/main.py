@@ -29,7 +29,8 @@ import shutil
 import uuid
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
+                               Response)
 
 from app import fill, legacy, llm, profile
 from app.forms import apply_docx, apply_xlsx, find_blanks_docx, find_blanks_xlsx
@@ -85,9 +86,12 @@ def head(title: str) -> str:
             f'<link rel="canonical" href="{PUBLIC_BASE}/">' + CSS + "</head><body><div class=\"wrap\">")
 
 
+KAPPSTORE = "https://kappstore.exbridge.jp/app.php?id=6ae90e27bf778a42&ref=kfillout"
+
 FOOT = ('<p class="src" style="margin-top:30px">'
         '<a href="./">最初から</a> ・ <a href="./profile">よく使う情報</a> ・ '
-        '<a href="./about">この道具について</a><br>'
+        '<a href="./about">この道具について</a> ・ '
+        f'<a href="{KAPPSTORE}" target="_blank" rel="noopener"><b>買い切り版（ソース同梱・MCP同梱）</b></a><br>'
         '© 株式会社エクスブリッジ　ファイルはこのサーバーの中だけで処理し、外部のAIサービスへは送りません。</p>'
         "</div></body></html>")
 
@@ -348,6 +352,24 @@ AIがするのは「この空欄はどの項目か」を見分けることだけ
 <p class="src">提出の前に、必ずご自身で全体を確かめてください。この道具の出力は下書きです。</p>""" + FOOT)
 
 
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots():
+    # /analyze と /download は POST の受け口。クロールさせない
+    return (f"User-agent: *\nAllow: /\nDisallow: /analyze\nDisallow: /download\n\n"
+            f"Sitemap: {PUBLIC_BASE}/sitemap.xml\n")
+
+
+@app.get("/sitemap.xml")
+def sitemap():
+    urls = ["/", "/profile", "/about"]
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+           + "".join(f"<url><loc>{PUBLIC_BASE}{u}</loc><changefreq>monthly</changefreq></url>"
+                     for u in urls)
+           + "</urlset>")
+    return Response(content=xml, media_type="application/xml")
+
+
 @app.get("/llms.txt", response_class=PlainTextResponse)
 def llms():
     return f"""# {SITE}
@@ -372,6 +394,10 @@ def llms():
 - 申請書を上げる: {PUBLIC_BASE}/
 - よく使う情報: {PUBLIC_BASE}/profile
 - この道具について: {PUBLIC_BASE}/about
+
+## 買い切り版
+- 商品ページ: https://kappstore.exbridge.jp/app.php?id=6ae90e27bf778a42
+- 税込55,000円。ソースコード（MIT）・設置手順書・MCPサーバーを同梱。自社サーバーで動かせる。
 
 運営: 株式会社エクスブリッジ https://exbridge.jp/
 """

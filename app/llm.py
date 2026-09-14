@@ -6,9 +6,10 @@
 ここでLLMにやらせるのは「この空欄はプロフィールのどの項目か」の対応づけだけで、
 入る文字はプロフィールの値をそのまま使う。当てはまるものが無ければ空欄のまま返す。
 
-モデルはローカルの gemma4（192.168.0.3）。gemma4 は思考型なので "think": false が要る
-（指定しないと隠れ推論がnum_predictを食い潰して応答が空になる）。
-会社情報を外部APIへ出さない意味もある。
+モデルはローカルの Ollama（既定 127.0.0.1:11434・gemma4）。別のホストで動かしているときは
+環境変数 KFILLOUT_OLLAMA と KFILLOUT_MODEL で差し替える。
+gemma4 は思考型なので "think": false が要る（指定しないと隠れ推論が num_predict を
+食い潰して応答が空になる）。会社情報を外部APIへ出さない意味もある。
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ import re
 
 import requests
 
-OLLAMA = os.environ.get("KFILLOUT_OLLAMA", "http://192.168.0.3:11434")
+OLLAMA = os.environ.get("KFILLOUT_OLLAMA", "http://127.0.0.1:11434")
 MODEL = os.environ.get("KFILLOUT_MODEL", "gemma4:12b-it-qat")
 TIMEOUT = int(os.environ.get("KFILLOUT_LLM_TIMEOUT", "120"))
 

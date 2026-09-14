@@ -4,6 +4,7 @@
 **分かるところだけ**を埋め、**元の書式のまま**返す。
 
 - 公開: https://kurage.exbridge.jp/kfillout.php/
+- 買い切り版: https://kappstore.exbridge.jp/app.php?id=6ae90e27bf778a42 （税込55,000円・MIT・MCP同梱）
 - バックエンド `:18354`（user unit `kfillout.service`）／ 公開は heteml の `php/kfillout.php` 透過プロキシ
 
 ## なぜ作るか（2026-09-14 実測）
@@ -43,7 +44,7 @@
 3. **利用者の入力** … その申請だけの値（サービス名・用途など）
 
 AI がするのは「この空欄はどの項目か」の見分けだけ。当てはまらない欄は**空のまま残して画面に出す**。
-申請書で作文されると事故になる。判定に使う LLM はローカル（Ollama 192.168.0.3・gemma4）なので、
+申請書で作文されると事故になる。判定に使う LLM もローカル（Ollama・gemma4。既定 127.0.0.1:11434、`KFILLOUT_OLLAMA` で変更可）なので、
 ファイルも会社情報も外部のAIサービスへ出ない。
 
 ## 実装で踏んだ罠
@@ -116,4 +117,4 @@ claude mcp add kfillout -- /home/kojima/work/kfillout/.venv/bin/python \
 - チェックボックス・押印欄の扱い
 - 同じ様式を複数人ぶん一度に作る
 - 平らなPDFで、〇〇 が無くラベルと罫線だけの欄（名古屋市の戸籍様式のような「氏 名」の右側）
-- kappstore 出品
+（出品済み）

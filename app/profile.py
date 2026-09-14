@@ -5,7 +5,7 @@
 ここに一度入れておけば、どの様式が来ても同じ値が入る。
 
 保存先は data/profile.json（ローカル）。**外へ送らない**。
-判定に使う LLM はローカルの Ollama（192.168.0.3）なので、会社情報が外部APIへ出ない。
+判定に使う LLM もローカルの Ollama なので、会社情報が外部APIへ出ない。
 """
 from __future__ import annotations
 
